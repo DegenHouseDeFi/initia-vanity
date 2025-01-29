@@ -84,8 +84,9 @@ make build-all
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! Please feel free to submit a Pull Request. If you have any questions, feel free to shoot an email at `gm@degenhouse.sh`.
 
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
