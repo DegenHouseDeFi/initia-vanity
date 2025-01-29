@@ -14,6 +14,7 @@ A high-performance vanity address generator for Initia. Generate custom addresse
 
 ## Installation
 
+### Using Go
 ```bash
 go install github.com/degenhousedefi/initia-vanity/cmd/initia-vanity@latest
 ```
@@ -24,6 +25,13 @@ Or build from source:
 git clone https://github.com/degenhousedefi/initia-vanity.git
 cd initia-vanity
 make build
+```
+
+
+### Using Homebrew
+```bash
+brew tap degenhousedefi/initia-vanity
+brew install initia-vanity
 ```
 
 ## Usage
