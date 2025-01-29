@@ -26,13 +26,6 @@ cd initia-vanity
 make build
 ```
 
-### Using Homebrew
-```bash
-# Use the full repository URL in the tap command
-brew tap degenhousedefi/initia-vanity https://github.com/degenhousedefi/initia-vanity
-brew install initia-vanity
-```
-
 ## Usage
 
 Basic usage examples:
