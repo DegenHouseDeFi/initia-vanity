@@ -1,12 +1,11 @@
 package vanity
 
 import (
+	"encoding/json"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
-
-	"github.com/btcsuite/btcd/btcec/v2"
 )
 
 func TestNewGenerator(t *testing.T) {
@@ -22,19 +21,34 @@ func TestNewGenerator(t *testing.T) {
 func TestGenerateAddress(t *testing.T) {
 	g := NewGenerator("test", "end", false, 1)
 
-	// Generate a sample public key for testing
-	privateKey, err := btcec.NewPrivateKey()
+	addr, privKey, pubKey, err := g.generateAddress()
 	if err != nil {
-		t.Fatalf("failed to generate private key: %v", err)
+		t.Fatalf("generateAddress error: %v", err)
 	}
-	pubKey := privateKey.PubKey().SerializeCompressed()
 
-	address := g.generateAddress(pubKey)
-	if address == "" {
-		t.Error("generateAddress returned empty string")
+	// Check address format
+	if addr == "" {
+		t.Error("address is empty")
 	}
-	if !strings.HasPrefix(address, "init1") {
-		t.Errorf("address does not start with init1: %s", address)
+	if !strings.HasPrefix(addr, "init1") {
+		t.Errorf("address does not start with init1: %s", addr)
+	}
+
+	// Check private key format (should be hex-encoded 32 bytes)
+	if len(privKey) != 64 {
+		t.Errorf("private key length should be 64 chars, got %d", len(privKey))
+	}
+
+	// Check public key format (should be JSON with @type and key fields)
+	var pubKeyJSON map[string]interface{}
+	if err := json.Unmarshal([]byte(pubKey), &pubKeyJSON); err != nil {
+		t.Errorf("invalid public key JSON: %v", err)
+	}
+	if pubKeyJSON["@type"] != "/cosmos.crypto.secp256k1.PubKey" {
+		t.Errorf("unexpected public key type: %v", pubKeyJSON["@type"])
+	}
+	if _, ok := pubKeyJSON["key"].(string); !ok {
+		t.Error("public key missing 'key' field")
 	}
 }
 
@@ -152,6 +166,15 @@ func TestGenerate(t *testing.T) {
 				}
 				if !strings.HasPrefix(result.Address, "init1") {
 					t.Errorf("address does not start with init1: %s", result.Address)
+				}
+				// Verify public key format
+				var pubKeyJSON map[string]interface{}
+				if err := json.Unmarshal([]byte(result.PublicKey), &pubKeyJSON); err != nil {
+					t.Errorf("invalid public key JSON: %v", err)
+				}
+				// Verify private key length (should be 64 chars hex)
+				if len(result.PrivateKey) != 64 {
+					t.Errorf("private key length should be 64 chars, got %d", len(result.PrivateKey))
 				}
 			}
 

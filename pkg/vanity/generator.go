@@ -1,21 +1,18 @@
 package vanity
 
 import (
-	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/btcsuite/btcd/btcec/v2"
-	"github.com/btcsuite/btcd/btcutil/bech32"
-	"golang.org/x/crypto/ripemd160"
-)
-
-const (
-	HRP = "init" // Fixed HRP for Initia addresses
+	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
+	sdk "github.com/cosmos/cosmos-sdk/types"
+	"github.com/cosmos/cosmos-sdk/types/bech32"
 )
 
 // Result represents a generated vanity address and its keys
@@ -59,27 +56,35 @@ func NewGenerator(pattern, position string, caseSensitive bool, count int) *Gene
 	}
 }
 
-// generateAddress creates a bech32 address from a public key
-func (g *Generator) generateAddress(pubKey []byte) string {
-	sha256Hash := sha256.Sum256(pubKey)
-	ripemdHasher := ripemd160.New()
-	ripemdHasher.Write(sha256Hash[:])
-	ripemdHash := ripemdHasher.Sum(nil)
+// generateAddress creates a new Cosmos SDK compatible address
+func (g *Generator) generateAddress() (string, string, string, error) {
+	// Generate private key using Cosmos SDK's secp256k1
+	privKey := secp256k1.GenPrivKey()
+	pubKey := privKey.PubKey()
 
-	converted, err := bech32.ConvertBits(ripemdHash, 8, 5, true)
+	// Get address from public key
+	addr := sdk.AccAddress(pubKey.Address())
+
+	// Encode address to bech32 with "init" prefix
+	address, err := bech32.ConvertAndEncode("init", addr)
 	if err != nil {
-		return ""
+		return "", "", "", err
 	}
 
-	address, err := bech32.EncodeFromBase256(HRP, converted)
+	// Get private key hex
+	privKeyHex := hex.EncodeToString(privKey.Bytes())
+
+	// Format public key as JSON
+	pubKeyJSON := map[string]interface{}{
+		"@type": "/cosmos.crypto.secp256k1.PubKey",
+		"key":   base64.StdEncoding.EncodeToString(pubKey.Bytes()),
+	}
+	pubKeyBytes, err := json.Marshal(pubKeyJSON)
 	if err != nil {
-		return ""
+		return "", "", "", err
 	}
 
-	if !g.caseSensitive {
-		address = strings.ToLower(address)
-	}
-	return address
+	return address, privKeyHex, string(pubKeyBytes), nil
 }
 
 // isMatch checks if an address matches the pattern
@@ -87,11 +92,12 @@ func (g *Generator) isMatch(address string) bool {
 	pattern := g.pattern
 	if !g.caseSensitive {
 		pattern = strings.ToLower(pattern)
+		address = strings.ToLower(address)
 	}
 
 	switch g.position {
 	case "start":
-		return strings.HasPrefix(address, HRP+"1"+pattern)
+		return strings.HasPrefix(address, "init1"+pattern)
 	case "end":
 		return strings.HasSuffix(address, pattern)
 	case "any":
@@ -150,22 +156,16 @@ func (g *Generator) worker(wg *sync.WaitGroup) {
 				return
 			}
 
-			privateKey, err := btcec.NewPrivateKey()
+			address, privKey, pubKey, err := g.generateAddress()
 			if err != nil {
-				continue
-			}
-
-			pubKey := privateKey.PubKey().SerializeCompressed()
-			address := g.generateAddress(pubKey)
-			if address == "" {
 				continue
 			}
 
 			if g.isMatch(address) {
 				result := Result{
 					Address:    address,
-					PrivateKey: hex.EncodeToString(privateKey.Serialize()),
-					PublicKey:  hex.EncodeToString(pubKey),
+					PrivateKey: privKey,
+					PublicKey:  pubKey,
 				}
 
 				g.mu.Lock()
