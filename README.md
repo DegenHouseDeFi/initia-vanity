@@ -53,6 +53,12 @@ initia-vanity -p any -c 10 test
 
 # Multiple options combined
 initia-vanity -p start --case-sensitive -c 3 --stats --format json Bob
+
+# Generate address using mnemonic
+initia-vanity -p end --use-mnemonic alice
+
+# Generate address using specific mnemonic
+initia-vanity -p end --use-mnemonic --mnemonic "your twelve words here" alice
 ```
 
 ### Options
@@ -61,6 +67,8 @@ initia-vanity -p start --case-sensitive -c 3 --stats --format json Bob
   - `start`: Match after init1 prefix
   - `end`: Match at the end
   - `any`: Match anywhere in address
+- `--use-mnemoic`: Use mnemonic-based key generation
+  - `--mnemonic string`: Specify mnemonic phrase (optional, will be generated if not provided) 
 - `-t, --threads`: Number of threads (default: CPU cores)
 - `--case-sensitive`: Enable case-sensitive matching
 - `-o, --output`: Output file path (if not specified, prints to stdout)
