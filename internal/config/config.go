@@ -16,6 +16,10 @@ type Config struct {
 	Quiet         bool
 	Count         int
 	Stats         bool
+	UseMnemonic   bool
+	Mnemonic      string
+	AccountNumber uint32
+	AddressIndex  uint32
 }
 
 // Validate checks if the configuration is valid
@@ -65,5 +69,7 @@ func DefaultConfig() *Config {
 		CaseSensitive: false,
 		Format:        "text",
 		Count:         1,
+		AccountNumber: 0,
+		AddressIndex:  0,
 	}
 }

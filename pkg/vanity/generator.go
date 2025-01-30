@@ -10,16 +10,20 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cosmos/cosmos-sdk/crypto/hd"
 	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/bech32"
+	"github.com/cosmos/go-bip39"
 )
 
 // Result represents a generated vanity address and its keys
 type Result struct {
-	Address    string `json:"address"`
-	PrivateKey string `json:"private_key"`
-	PublicKey  string `json:"public_key"`
+	Address        string `json:"address"`
+	PrivateKey     string `json:"private_key"`
+	PublicKey      string `json:"public_key"`
+	Mnemonic       string `json:"mnemonic,omitempty"`
+	DerivationPath string `json:"derivation_path,omitempty"`
 }
 
 // Stats holds generation statistics
@@ -36,6 +40,8 @@ type Generator struct {
 	position      string
 	caseSensitive bool
 	count         int
+	useMnemonic   bool
+	mnemonic      string
 	stats         *Stats
 	results       []Result
 	stopCh        chan struct{}
@@ -45,18 +51,35 @@ type Generator struct {
 }
 
 // NewGenerator creates a new vanity address generator
-func NewGenerator(pattern, position string, caseSensitive bool, count int) *Generator {
+func NewGenerator(pattern, position string, caseSensitive bool, count int, useMnemonic bool, mnemonic string) *Generator {
 	return &Generator{
 		pattern:       pattern,
 		position:      position,
 		caseSensitive: caseSensitive,
 		count:         count,
+		useMnemonic:   useMnemonic,
+		mnemonic:      mnemonic,
 		stats:         &Stats{},
 		stopCh:        make(chan struct{}),
 	}
 }
 
-// generateAddress creates a new Cosmos SDK compatible address
+// generateMnemonic generates a new random mnemonic
+func (g *Generator) generateMnemonic() (string, error) {
+	entropy, err := bip39.NewEntropy(256)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate entropy: %v", err)
+	}
+
+	mnemonic, err := bip39.NewMnemonic(entropy)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate mnemonic: %v", err)
+	}
+
+	return mnemonic, nil
+}
+
+// generateAddress creates a new random Cosmos SDK compatible address
 func (g *Generator) generateAddress() (string, string, string, error) {
 	// Generate private key using Cosmos SDK's secp256k1
 	privKey := secp256k1.GenPrivKey()
@@ -65,7 +88,7 @@ func (g *Generator) generateAddress() (string, string, string, error) {
 	// Get address from public key
 	addr := sdk.AccAddress(pubKey.Address())
 
-	// Encode address to bech32 with "init" prefix
+	// Convert to bech32 with "init" prefix
 	address, err := bech32.ConvertAndEncode("init", addr)
 	if err != nil {
 		return "", "", "", err
@@ -85,6 +108,69 @@ func (g *Generator) generateAddress() (string, string, string, error) {
 	}
 
 	return address, privKeyHex, string(pubKeyBytes), nil
+}
+
+// generateAddressFromMnemonic generates an address using HD wallet derivation
+func (g *Generator) generateAddressFromMnemonic() (string, string, string, string, string, error) {
+	var mnemonic string
+	if g.mnemonic != "" {
+		// Validate provided mnemonic
+		if !bip39.IsMnemonicValid(g.mnemonic) {
+			return "", "", "", "", "", fmt.Errorf("invalid mnemonic provided")
+		}
+		mnemonic = g.mnemonic
+	} else {
+		var err error
+		mnemonic, err = g.generateMnemonic()
+		if err != nil {
+			return "", "", "", "", "", err
+		}
+	}
+
+	// Derive seed from mnemonic
+	seed := bip39.NewSeed(mnemonic, "")
+
+	// Create master key and derive path
+	master, ch := hd.ComputeMastersFromSeed(seed)
+
+	// Use BIP44 path: m/44'/118'/0'/0/index
+	// 44' : BIP 44 purpose
+	// 118': Cosmos coin type
+	// 0'  : Account number
+	// 0   : External branch
+	// index: Address index
+	path := "m/44'/118'/0'/0/0"
+
+	derivedPrivKey, err := hd.DerivePrivateKeyForPath(master, ch, path)
+	if err != nil {
+		return "", "", "", "", "", fmt.Errorf("failed to derive private key: %v", err)
+	}
+
+	// Create private key from derived bytes
+	privKey := &secp256k1.PrivKey{Key: derivedPrivKey}
+	pubKey := privKey.PubKey()
+
+	// Get address from public key
+	addr := sdk.AccAddress(pubKey.Address())
+
+	// Convert to bech32 with "init" prefix
+	address, err := bech32.ConvertAndEncode("init", addr)
+	if err != nil {
+		return "", "", "", "", "", err
+	}
+
+	// Format keys
+	privKeyHex := hex.EncodeToString(privKey.Bytes())
+	pubKeyJSON := map[string]interface{}{
+		"@type": "/cosmos.crypto.secp256k1.PubKey",
+		"key":   base64.StdEncoding.EncodeToString(pubKey.Bytes()),
+	}
+	pubKeyBytes, err := json.Marshal(pubKeyJSON)
+	if err != nil {
+		return "", "", "", "", "", err
+	}
+
+	return address, privKeyHex, string(pubKeyBytes), mnemonic, path, nil
 }
 
 // isMatch checks if an address matches the pattern
@@ -156,7 +242,15 @@ func (g *Generator) worker(wg *sync.WaitGroup) {
 				return
 			}
 
-			address, privKey, pubKey, err := g.generateAddress()
+			var address, privKey, pubKey, mnemonic, derivationPath string
+			var err error
+
+			if g.useMnemonic {
+				address, privKey, pubKey, mnemonic, derivationPath, err = g.generateAddressFromMnemonic()
+			} else {
+				address, privKey, pubKey, err = g.generateAddress()
+			}
+
 			if err != nil {
 				continue
 			}
@@ -166,6 +260,11 @@ func (g *Generator) worker(wg *sync.WaitGroup) {
 					Address:    address,
 					PrivateKey: privKey,
 					PublicKey:  pubKey,
+				}
+
+				if g.useMnemonic {
+					result.Mnemonic = mnemonic
+					result.DerivationPath = derivationPath
 				}
 
 				g.mu.Lock()

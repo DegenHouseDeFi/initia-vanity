@@ -33,6 +33,12 @@ All generated addresses will start with 'init1'.`,
   # Generate a case-sensitive address starting with "Charlie"
   initia-vanity -p start --case-sensitive Charlie
 
+  # Generate address using mnemonic
+  initia-vanity -p end --use-mnemonic alice
+
+  # Generate address using specific mnemonic
+  initia-vanity -p end --use-mnemonic --mnemonic "your twelve words here" alice
+
   # Save results to a JSON file
   initia-vanity -p any --format json -o addresses.json alice
 
@@ -42,33 +48,40 @@ All generated addresses will start with 'init1'.`,
 
 	cfg = config.DefaultConfig()
 
-	// Add flags
+	// Pattern Matching Options
 	rootCmd.Flags().StringVarP(&cfg.Position, "position", "p", cfg.Position,
 		`Match position in address (one of: start, end, any)
 - start: Match after init1 prefix
 - end:   Match at the end
 - any:   Match anywhere in address`)
-
-	rootCmd.Flags().IntVarP(&cfg.Threads, "threads", "t", cfg.Threads,
-		"Number of threads for parallel processing")
-
 	rootCmd.Flags().BoolVar(&cfg.CaseSensitive, "case-sensitive", cfg.CaseSensitive,
 		"Enable case-sensitive pattern matching")
-
-	rootCmd.Flags().StringVarP(&cfg.OutputFile, "output", "o", cfg.OutputFile,
-		"Output file path (if not specified, prints to stdout)")
-
-	rootCmd.Flags().StringVar(&cfg.Format, "format", cfg.Format,
-		"Output format (one of: text, json)")
-
-	rootCmd.Flags().BoolVar(&cfg.Quiet, "quiet", cfg.Quiet,
-		"Suppress progress output")
-
 	rootCmd.Flags().IntVarP(&cfg.Count, "count", "c", cfg.Count,
 		"Number of matching addresses to generate")
 
+	// Key Generation Options
+	rootCmd.Flags().BoolVar(&cfg.UseMnemonic, "use-mnemonic", cfg.UseMnemonic,
+		"Use mnemonic-based key generation instead of random")
+	rootCmd.Flags().StringVar(&cfg.Mnemonic, "mnemonic", cfg.Mnemonic,
+		"Specify mnemonic phrase (optional, will be generated if not provided)")
+	rootCmd.Flags().Uint32Var(&cfg.AccountNumber, "account", cfg.AccountNumber,
+		"Account number for HD derivation path (default: 0)")
+	rootCmd.Flags().Uint32Var(&cfg.AddressIndex, "address-index", cfg.AddressIndex,
+		"Address index for HD derivation path (default: 0)")
+
+	// Performance Options
+	rootCmd.Flags().IntVarP(&cfg.Threads, "threads", "t", cfg.Threads,
+		"Number of threads for parallel processing")
 	rootCmd.Flags().BoolVar(&cfg.Stats, "stats", cfg.Stats,
 		"Show performance statistics")
+
+	// Output Options
+	rootCmd.Flags().StringVarP(&cfg.OutputFile, "output", "o", cfg.OutputFile,
+		"Output file path (if not specified, prints to stdout)")
+	rootCmd.Flags().StringVar(&cfg.Format, "format", cfg.Format,
+		"Output format (one of: text, json)")
+	rootCmd.Flags().BoolVar(&cfg.Quiet, "quiet", cfg.Quiet,
+		"Suppress progress output")
 
 	rootCmd.Version = "v1.0.0"
 
@@ -99,11 +112,17 @@ func run(cmd *cobra.Command, args []string) error {
 		fmt.Printf("Searching for pattern: %s\n", cfg.Pattern)
 		fmt.Printf("Position: %s\n", cfg.Position)
 		fmt.Printf("Using %d threads\n", cfg.Threads)
+		if cfg.UseMnemonic {
+			fmt.Println("Using mnemonic-based generation")
+			if cfg.Mnemonic != "" {
+				fmt.Println("Using provided mnemonic")
+			}
+		}
 	}
 
 	// Create and start generator
 	startTime := time.Now()
-	generator := vanity.NewGenerator(cfg.Pattern, cfg.Position, cfg.CaseSensitive, cfg.Count)
+	generator := vanity.NewGenerator(cfg.Pattern, cfg.Position, cfg.CaseSensitive, cfg.Count, cfg.UseMnemonic, cfg.Mnemonic)
 
 	// Start generation
 	if err := generator.Generate(cfg.Threads); err != nil {

@@ -6,10 +6,12 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/cosmos/go-bip39"
 )
 
 func TestNewGenerator(t *testing.T) {
-	g := NewGenerator("test", "end", false, 1)
+	g := NewGenerator("test", "end", false, 1, false, "")
 	if g == nil {
 		t.Fatal("NewGenerator returned nil")
 	}
@@ -19,7 +21,7 @@ func TestNewGenerator(t *testing.T) {
 }
 
 func TestGenerateAddress(t *testing.T) {
-	g := NewGenerator("test", "end", false, 1)
+	g := NewGenerator("test", "end", false, 1, false, "")
 
 	addr, privKey, pubKey, err := g.generateAddress()
 	if err != nil {
@@ -49,6 +51,81 @@ func TestGenerateAddress(t *testing.T) {
 	}
 	if _, ok := pubKeyJSON["key"].(string); !ok {
 		t.Error("public key missing 'key' field")
+	}
+}
+
+func TestGenerateAddressFromMnemonic(t *testing.T) {
+	tests := []struct {
+		name         string
+		mnemonic     string
+		expectError  bool
+		checkAddress bool
+	}{
+		{
+			name:         "generate with new mnemonic",
+			mnemonic:     "",
+			expectError:  false,
+			checkAddress: true,
+		},
+		{
+			name:         "use provided valid mnemonic",
+			mnemonic:     "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+			expectError:  false,
+			checkAddress: true,
+		},
+		{
+			name:         "invalid mnemonic",
+			mnemonic:     "invalid mnemonic phrase",
+			expectError:  true,
+			checkAddress: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := NewGenerator("test", "end", false, 1, true, tt.mnemonic)
+			addr, privKey, pubKey, mnemonic, path, err := g.generateAddressFromMnemonic()
+
+			if tt.expectError {
+				if err == nil {
+					t.Error("expected error but got none")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if tt.checkAddress {
+				// Check address format
+				if !strings.HasPrefix(addr, "init1") {
+					t.Errorf("address does not start with init1: %s", addr)
+				}
+
+				// Verify mnemonic is valid
+				if !bip39.IsMnemonicValid(mnemonic) {
+					t.Error("generated mnemonic is invalid")
+				}
+
+				// Check derivation path is always index 0
+				expectedPath := "m/44'/118'/0'/0/0"
+				if path != expectedPath {
+					t.Errorf("expected path %s, got %s", expectedPath, path)
+				}
+
+				// Check private key format
+				if len(privKey) != 64 {
+					t.Errorf("private key length should be 64 chars, got %d", len(privKey))
+				}
+
+				// Check public key format
+				var pubKeyJSON map[string]interface{}
+				if err := json.Unmarshal([]byte(pubKey), &pubKeyJSON); err != nil {
+					t.Errorf("invalid public key JSON: %v", err)
+				}
+			}
+		})
 	}
 }
 
@@ -109,7 +186,7 @@ func TestIsMatch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			g := NewGenerator(tt.pattern, tt.position, tt.caseSensitive, 1)
+			g := NewGenerator(tt.pattern, tt.position, tt.caseSensitive, 1, false, "")
 			got := g.isMatch(tt.address)
 			if got != tt.want {
 				t.Errorf("isMatch() = %v, want %v", got, tt.want)
@@ -120,34 +197,56 @@ func TestIsMatch(t *testing.T) {
 
 func TestGenerate(t *testing.T) {
 	tests := []struct {
-		name     string
-		pattern  string
-		position string
-		count    int
-		threads  int
-		timeout  time.Duration
+		name        string
+		pattern     string
+		position    string
+		count       int
+		threads     int
+		timeout     time.Duration
+		useMnemonic bool
+		mnemonic    string
 	}{
 		{
-			name:     "single result",
-			pattern:  "a",
-			position: "end",
-			count:    1,
-			threads:  2,
-			timeout:  10 * time.Second,
+			name:        "single result without mnemonic",
+			pattern:     "a",
+			position:    "end",
+			count:       1,
+			threads:     2,
+			timeout:     10 * time.Second,
+			useMnemonic: false,
 		},
 		{
-			name:     "multiple results",
-			pattern:  "a",
-			position: "any",
-			count:    3,
-			threads:  4,
-			timeout:  20 * time.Second,
+			name:        "multiple results without mnemonic",
+			pattern:     "a",
+			position:    "any",
+			count:       3,
+			threads:     4,
+			timeout:     20 * time.Second,
+			useMnemonic: false,
+		},
+		{
+			name:        "single result with mnemonic",
+			pattern:     "a",
+			position:    "end",
+			count:       1,
+			threads:     2,
+			timeout:     10 * time.Second,
+			useMnemonic: true,
+		},
+		{
+			name:        "multiple results with mnemonic",
+			pattern:     "a",
+			position:    "any",
+			count:       3,
+			threads:     4,
+			timeout:     20 * time.Second,
+			useMnemonic: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			g := NewGenerator(tt.pattern, tt.position, false, tt.count)
+			g := NewGenerator(tt.pattern, tt.position, false, tt.count, tt.useMnemonic, tt.mnemonic)
 
 			err := g.Generate(tt.threads)
 			if err != nil {
@@ -176,6 +275,19 @@ func TestGenerate(t *testing.T) {
 				if len(result.PrivateKey) != 64 {
 					t.Errorf("private key length should be 64 chars, got %d", len(result.PrivateKey))
 				}
+
+				// Verify mnemonic-specific fields when using mnemonic
+				if tt.useMnemonic {
+					if result.Mnemonic == "" {
+						t.Error("mnemonic is empty when using mnemonic generation")
+					}
+					if !bip39.IsMnemonicValid(result.Mnemonic) {
+						t.Error("invalid mnemonic generated")
+					}
+					if result.DerivationPath != "m/44'/118'/0'/0/0" {
+						t.Errorf("incorrect derivation path, expected m/44'/118'/0'/0/0, got %s", result.DerivationPath)
+					}
+				}
 			}
 
 			stats := g.GetStats()
@@ -187,7 +299,7 @@ func TestGenerate(t *testing.T) {
 }
 
 func TestGetStats(t *testing.T) {
-	g := NewGenerator("test", "end", false, 1)
+	g := NewGenerator("test", "end", false, 1, false, "")
 	atomic.StoreUint64(&g.stats.Attempts, 100)
 	atomic.StoreUint64(&g.stats.Found, 2)
 
@@ -201,7 +313,7 @@ func TestGetStats(t *testing.T) {
 }
 
 func TestStop(t *testing.T) {
-	g := NewGenerator("a", "end", false, 1000) // Large count to ensure it doesn't finish naturally
+	g := NewGenerator("a", "end", false, 1000, false, "") // Large count to ensure it doesn't finish naturally
 	done := make(chan bool)
 
 	go func() {

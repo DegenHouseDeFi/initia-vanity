@@ -3,8 +3,8 @@ module github.com/degenhousedefi/initia-vanity
 go 1.23.5
 
 require (
-	github.com/btcsuite/btcd/btcec/v2 v2.3.4
 	github.com/cosmos/cosmos-sdk v0.50.11
+	github.com/cosmos/go-bip39 v1.0.0
 	github.com/spf13/cobra v1.8.1
 )
 
@@ -20,6 +20,7 @@ require (
 	cosmossdk.io/x/tx v0.13.7 // indirect
 	github.com/DataDog/zstd v1.5.5 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
+	github.com/btcsuite/btcd/btcec/v2 v2.3.4 // indirect
 	github.com/btcsuite/btcd/chaincfg/chainhash v1.1.0 // indirect
 	github.com/cespare/xxhash v1.1.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
