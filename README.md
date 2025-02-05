@@ -61,6 +61,13 @@ initia-vanity -p end --use-mnemonic alice
 initia-vanity -p end --use-mnemonic --mnemonic "your twelve words here" alice
 ```
 
+Building from source:
+
+If you are [building from source](https://github.com/DegenHouseDeFi/initia-vanity?tab=readme-ov-file#installation) to generate a vanity address, use the locally generated build instead of the global build, e.g. - 
+```bash
+./initia-vanity -p end alice
+```
+
 ### Options
 
 - `-p, --position`: Match position (start|end|any)
