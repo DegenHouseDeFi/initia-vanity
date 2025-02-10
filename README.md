@@ -18,6 +18,7 @@ A high-performance vanity address generator for Initia. Generate custom addresse
 ```bash
 go install github.com/degenhousedefi/initia-vanity/cmd/initia-vanity@latest
 ```
+Ensure Go is installed (run `go version` in your terminal to verify) and your `$GOPATH/bin` is added to your PATH in your shell configuration (`~/.zshrc`, `~/.bashrc`, etc.)
 
 Or build from source:
 ```bash
