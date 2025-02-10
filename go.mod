@@ -1,6 +1,6 @@
 module github.com/degenhousedefi/initia-vanity
 
-go 1.23.5
+go 1.23
 
 require (
 	github.com/cosmos/cosmos-sdk v0.50.11
